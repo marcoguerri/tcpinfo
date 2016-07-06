@@ -7,6 +7,19 @@
 #define LIST_PRINT_BUFF_SIZE          16
 #define REALLOC_THRESHOLD    8
 
+
+/**
+ * @brief Frees a node and associated dynamically allocated memory
+ */
+void 
+free_node(node_t* ptr_node)
+{
+    free(ptr_node->data->payload);
+    free(ptr_node->data);
+    free(ptr_node);
+}
+
+
 /* Initializes a new root node */
 node_t*
 list_init(void *payload, size_t size)
@@ -155,7 +168,7 @@ list_insert(node_t* ptr_root, void *payload, size_t size, size_t pos)
     while(pos > 0)
     {
         ptr_prev = ptr_pos;
-        /* Checked pos against the length of the list, we can't go beyon the 
+        /* Checked pos against the length of the list, we can't go beyond the 
          * last element */
         assert(ptr_pos != NULL);
         ptr_pos = ptr_pos-> next;
@@ -209,10 +222,91 @@ list_insert(node_t* ptr_root, void *payload, size_t size, size_t pos)
     return ptr_root;
 
 err_node_data:
-    free(ptr_data);
-    free(ptr_node);
+    free_node(ptr_node);
     return NULL;
 }
+
+/**
+ * @brief Deletes the first node which matches the payload passed as argument
+ * @param payload Paylod to delete
+ * @param size Size of the payload
+ * @return The pointer to the new list
+ */
+node_t*
+list_del(node_t* ptr_root, void* payload, size_t size)
+{
+    node_t *ptr_node = ptr_root;
+    while(ptr_node != NULL) 
+    {
+        if(memcmp(ptr_node->data->payload, payload, size) == 0)
+        {
+            if(ptr_node->prev == NULL)
+            {
+                /* First node of the list */
+                if(ptr_node->next != NULL)
+                {
+                   /* First node is followed by at least one more node */
+                   ptr_node->next->prev = NULL;
+                   node_t* temp = ptr_node->next;
+                   free_node(ptr_node);
+                   return temp;
+                }
+                else
+                {
+                    /* First node is the only one in the list */
+                    free_node(ptr_node);
+                    return NULL;
+                }
+            }
+            else
+            {
+                /* Node is not the first in the list */
+                if(ptr_node->next != NULL)
+                {
+                    /* Node is followed by at least one more node */
+                    ptr_node->next->prev = ptr_node->prev;
+                    ptr_node->prev->next = ptr_node->next;
+                    free_node(ptr_node);
+
+                }
+                else
+                { 
+                    /* Node is the last in the list */
+                    ptr_node->prev->next = NULL;
+                    free_node(ptr_node);
+                }
+                return ptr_root;
+            }
+
+        }
+        ptr_node = ptr_node->next;
+    }
+    /* Should never reach here */
+    assert(0);
+}
+
+
+/**
+ * @brief Returns a pointer to the first occurrence of payload in the list
+ * @param ptr_root Pointer to root of the list
+ * @param payload Payload to be searched in the list
+ * @return Pointer to the first node matching the payload or NULL if payload
+ * is not found
+ */
+node_t*
+list_search(node_t* ptr_root, void* payload, size_t size)
+{
+
+    while(ptr_root != NULL)
+    {
+        if(memcmp(ptr_root->data->payload, payload, size) == 0)
+            return ptr_root;
+        else
+            ptr_root = ptr_root->next;
+    }
+    return NULL;   
+}
+
 
 /**
  * @brief Returns a pointer to the payload of the n-th element of the list
