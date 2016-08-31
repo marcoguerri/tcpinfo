@@ -1,18 +1,19 @@
-SOURCES := $(shell find . -name '*.c')
+SOURCES := $(shell find ./src -name '*.c')
 OBJECTS := $(SOURCES:.cpp=.o)
 
-CFLAGS = -Wall -O0 -fPIC -D_GNU_SOURCE
-LDLIBS = -ldl
-LDFLAGS = -shared
+CFLAGS = -Wall -O0 -fPIC -D_GNU_SOURCE -Ilib
+LDLIBS = -ldl -lads
+LDFLAGS = -shared -Llib
 all: socket.so
 
 socket.so: $(OBJECTS)
-	$(CC) $(OBJECTS) -o $@ $(LDLIBS) $(LDFLAGS) $(CFLAGS)
+	@install -d bin -m 755
+	$(CC) $(OBJECTS) -o ./bin/$@ $(LDLIBS) $(LDFLAGS) $(CFLAGS)
 
 %.o: %.cpp
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f socket.so
+	rm -f ./bin/socket.so
 
 .PHONY: clean

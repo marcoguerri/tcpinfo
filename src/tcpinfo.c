@@ -1,18 +1,23 @@
 /*
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * The MIT License (MIT)
+ * Copyright (C) 2016 Marco Guerri
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of 
+ * this software and associated documentation files (the "Software"), to deal in 
+ * the Software without restriction, including without limitation the rights to use, 
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
+ * Software, and to permit persons to whom the Software is furnished to do so, subject
+ * to the following conditions:
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
- *
- * Author: Marco Guerri <gmarco.dev@gmail.com>
+ * The above copyright notice and this permission notice shall be included in all 
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include <stdio.h>
@@ -28,6 +33,7 @@
 #include "list.h"
 
 node_t* list_sock = NULL;
+
 
 void sigusr_callback(int signum)
 {
@@ -58,26 +64,10 @@ void sigusr_callback(int signum)
     }
 }
 
-int write(int fd, const void *buf, size_t count)
-{
-    /* write hack to hide the fact that write might be interrupted returning
-     * with EINTR. In this case, try to convince the client to try again */
-
-    int (*write_libc)(int , const void *, size_t);
-    write_libc = (int(*)(int, const void*, size_t))dlsym(RTLD_NEXT, "write");
-    
-    int ret = (*write_libc)(fd, buf, count);
-    if(ret == -1 && errno == EINTR)
-    {
-        errno = EAGAIN; 
-        return -1;
-    }
-    return ret;
-}
-
 int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 {
-    /* poll hack to make it restart when it returns with EINTR */
+    /* poll hack to make it restart upon returning with EINTR. If poll
+     * is interrupted twice, the second interruption will not be trapped */
     int (*poll_libc)(struct pollfd*, nfds_t, int);
     poll_libc = (int(*)(struct pollfd *, nfds_t, int))dlsym(RTLD_NEXT, "poll");
     
@@ -95,8 +85,8 @@ int socket(int domain, int type, int protocol)
     /* 
      * poll is never restarted if interrupted, regardless of SA_RESTART.
      * If the server side is polling, upon receiving SIGUSR it will will return
-     * with EINTR and it will most likely exit. Solution might be to set a hook
-     * for poll?
+     * with EINTR and it will most likely exit. A hook for poll is set to work 
+     * around this issue.
      */
     sigusr_action.sa_flags = SA_RESTART;
    
@@ -104,7 +94,7 @@ int socket(int domain, int type, int protocol)
     int ret = sigaction(SIGUSR1, NULL, &old_action);
     if(ret < 0) 
     {
-        /* Cannot verify if the signal is installed. Forcing the installation */
+        /* Cannot verify if the signal is installed. Forcing installation */
         if(sigaction(SIGUSR1, &sigusr_action, NULL) < 0)
             fprintf(stderr,"Could not install SIGUSR1 signal\n");
     }
@@ -119,11 +109,14 @@ int socket(int domain, int type, int protocol)
                 fprintf(stderr,"Signal handler installed correctly\n");
         }
     }
-
+    
     int (*socket_libc)(int, int, int);
     socket_libc = (int(*)(int, int, int))dlsym(RTLD_NEXT, "socket");
-    
     int fd = (*socket_libc)(domain, type, protocol);
+    
+    /* Consider only SOCK_STREAM sockets */
+    if(type != SOCK_STREAM)
+        return fd;
  
     if(list_sock == NULL)
         list_sock = list_init(&fd, sizeof(int));
@@ -140,21 +133,21 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
     accept_libc = (int(*)(int, struct sockaddr*, socklen_t*))dlsym(RTLD_NEXT, "accept");
     
     int fd = (*accept_libc)(sockfd, addr, addrlen);
-    
-    /* If socket list is null it means socket() was never called (modulo bug
-     * of the library). sockfd can't be a proper socket, in this case just 
-     * do nothing */
+ 
+    /* Calling accept on socketfd requires having previously called socket(),
+     * which initializes the list. If list is indeed NULL, accept is being called
+     * on a socket which has not been initialized or on a socket != SOCK_STREAM,
+     * which should not happen anyway. Do nothing in this case */
+
     if(list_sock != NULL)
     {
         if(list_search(list_sock, &sockfd, sizeof(int)) == NULL) 
         {
-            /* Welcoming socket must be already in the list. If not, do nothing */
+            /* Welcoming socket must be already in the list. If not, warn but
+             * add the new socket anyway */
             fprintf(stderr, "Welcoming socket is not in the list?\n");
         }
-        else
-        { 
-            list_sock = list_insert(list_sock, &fd, sizeof(int), list_len(list_sock)); 
-        }
+        list_sock = list_insert(list_sock, &fd, sizeof(int), list_len(list_sock)); 
     }
  
     return fd;
