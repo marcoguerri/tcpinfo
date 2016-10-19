@@ -54,9 +54,49 @@ void sigusr_callback(int signum)
                          &tcp_info_len);
     if(ret == 0) 
     {
-        fprintf(stderr, "Lost: %u, Retransmitted: %u\n",
-                        tcp_info.tcpi_lost,
-                        tcp_info.tcpi_total_retrans);
+        fprintf(stderr, "\n\nsocket %d %ld\n", sock_fd, sizeof(tcp_info));
+        fprintf(stderr, "          state: %lu\n", (unsigned long) tcp_info.tcpi_state);
+        fprintf(stderr, "       ca_state: %lu\n", (unsigned long) tcp_info.tcpi_ca_state);
+        fprintf(stderr, "    retransmits: %lu\n", (unsigned long) tcp_info.tcpi_retransmits);
+        fprintf(stderr, "         probes: %lu\n", (unsigned long) tcp_info.tcpi_probes);
+        fprintf(stderr, "        backoff: %lu\n", (unsigned long) tcp_info.tcpi_backoff);
+        fprintf(stderr, "        options: %lu\n", (unsigned long) tcp_info.tcpi_options);
+        fprintf(stderr, "     snd_wscale: %lu\n", (unsigned long) tcp_info.tcpi_snd_wscale);
+        fprintf(stderr, "     rcv_wscale: %lu\n", (unsigned long) tcp_info.tcpi_rcv_wscale);
+        fprintf(stderr, "            rto: %lu\n", (unsigned long) tcp_info.tcpi_rto);
+        fprintf(stderr, "            ato: %lu\n", (unsigned long) tcp_info.tcpi_ato);
+        fprintf(stderr, "        snd_mss: %lu\n", (unsigned long) tcp_info.tcpi_snd_mss);
+        fprintf(stderr, "        rcv_mss: %lu\n", (unsigned long) tcp_info.tcpi_rcv_mss);
+        fprintf(stderr, "        unacked: %lu\n", (unsigned long) tcp_info.tcpi_unacked);
+        fprintf(stderr, "         sacked: %lu\n", (unsigned long) tcp_info.tcpi_sacked);
+        fprintf(stderr, "           lost: %lu\n", (unsigned long) tcp_info.tcpi_lost);
+        fprintf(stderr, "        retrans: %lu\n", (unsigned long) tcp_info.tcpi_retrans);
+        fprintf(stderr, "        fackets: %lu\n", (unsigned long) tcp_info.tcpi_fackets);
+        fprintf(stderr, " last_data_sent: %lu\n", (unsigned long) tcp_info.tcpi_last_data_sent);
+        fprintf(stderr, "  last_ack_sent: %lu\n", (unsigned long) tcp_info.tcpi_last_ack_sent);
+        fprintf(stderr, " last_data_recv: %lu\n", (unsigned long) tcp_info.tcpi_last_data_recv);
+        fprintf(stderr, "  last_ack_recv: %lu\n", (unsigned long) tcp_info.tcpi_last_ack_recv);
+        fprintf(stderr, "           pmtu: %lu\n", (unsigned long) tcp_info.tcpi_pmtu);
+        fprintf(stderr, "   rcv_ssthresh: %lu\n", (unsigned long) tcp_info.tcpi_rcv_ssthresh);
+        fprintf(stderr, "            rtt: %lu\n", (unsigned long) tcp_info.tcpi_rtt);
+        fprintf(stderr, "         rttvar: %lu\n", (unsigned long) tcp_info.tcpi_rttvar);
+        fprintf(stderr, "   snd_ssthresh: %lu\n", (unsigned long) tcp_info.tcpi_snd_ssthresh);
+        fprintf(stderr, "       snd_cwnd: %lu\n", (unsigned long) tcp_info.tcpi_snd_cwnd);
+        fprintf(stderr, "         advmss: %lu\n", (unsigned long) tcp_info.tcpi_advmss);
+        fprintf(stderr, "     reordering: %lu\n", (unsigned long) tcp_info.tcpi_reordering);
+        fprintf(stderr, "        rcv_rtt: %lu\n", (unsigned long) tcp_info.tcpi_rcv_rtt);
+        fprintf(stderr, "      rcv_space: %lu\n", (unsigned long) tcp_info.tcpi_rcv_space);
+        fprintf(stderr, "  total_retrans: %lu\n", (unsigned long) tcp_info.tcpi_total_retrans);
+        fprintf(stderr, "    pacing_rate: %lu\n", (unsigned long) tcp_info.tcpi_pacing_rate);
+        fprintf(stderr, "max_pacing_rate: %lu\n", (unsigned long) tcp_info.tcpi_max_pacing_rate);
+        fprintf(stderr, "    bytes_acked: %lu\n", (unsigned long) tcp_info.tcpi_bytes_acked);
+        fprintf(stderr, " bytes_received: %lu\n", (unsigned long) tcp_info.tcpi_bytes_received);
+        fprintf(stderr, "       segs_out: %lu\n", (unsigned long) tcp_info.tcpi_segs_out);
+        fprintf(stderr, "        segs_in: %lu\n", (unsigned long) tcp_info.tcpi_segs_in);
+        fprintf(stderr, "  notsent_bytes: %lu\n", (unsigned long) tcp_info.tcpi_notsent_bytes);
+        fprintf(stderr, "        min_rtt: %lu\n", (unsigned long) tcp_info.tcpi_min_rtt);
+        fprintf(stderr, "   data_segs_in: %lu\n", (unsigned long) tcp_info.tcpi_data_segs_in);
+        fprintf(stderr, "  data_segs_out: %lu\n", (unsigned long) tcp_info.tcpi_data_segs_out);
     } 
     else 
     {
