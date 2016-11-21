@@ -34,6 +34,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "list.h"
+#include "config.h"
 
 list_node_t* list_sock = NULL;
 
@@ -51,19 +52,57 @@ struct tpcinfo_field
 
 struct tpcinfo_field tcpinfo_fields_enabled[] = 
 {
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_STATE
     ENABLE_FIELD(state, "hhu"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_CA_STATE
     ENABLE_FIELD(ca_state, "hhu"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_RETRANSMITS
     ENABLE_FIELD(retransmits, "hhu"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_PROBES
     ENABLE_FIELD(probes, "hhu"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_BACKOFF
     ENABLE_FIELD(backoff, "hhu"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_OPTIONS
     ENABLE_FIELD(options, "hhu"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_RTO
     ENABLE_FIELD(rto, "u"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_LOST
     ENABLE_FIELD(lost, "u"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_RETRANS
     ENABLE_FIELD(retrans, "u"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_TOTAL_RETRANS
     ENABLE_FIELD(total_retrans, "u"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_ADVMSS
     ENABLE_FIELD(advmss, "u"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_ATO
     ENABLE_FIELD(ato, "u"),
+#endif
+
+#ifdef HAVE_STRUCT_TCP_INFO_TCPI_FACKETS
     ENABLE_FIELD(fackets, "u")
+#endif
 };
 
 
