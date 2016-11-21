@@ -35,8 +35,7 @@ AC_CHECK_MEMBERS([struct tcp_info.tcpi_state,
                   struct tcp_info.tcpi_advmss,
                   struct tcp_info.tcpi_ato,
                   struct tcp_info.tcpi_fackets], 
-                [], 
-                [AC_MSG_ERROR([tcp_info.state is needed])], 
+                [],[],
                 [[#include <linux/tcp.h>]])
 
 AC_OUTPUT
