@@ -40,6 +40,7 @@ list_node_t* list_sock = NULL;
 
 #define STRLEN(s) (sizeof(s)/sizeof(s[0]))
 #define ENABLE_FIELD(f, fmt) {#f, fmt, offsetof(struct tcp_info, tcpi_##f)} 
+
 struct tpcinfo_field 
 {
     /* Name of the field of interest */
@@ -49,6 +50,15 @@ struct tpcinfo_field
     /* Offset within tcp_info */
     unsigned int offset;
 };
+
+
+/* Helper struct which maps a tcpinfo struct to the respective file descriptor */
+struct tcpinfo_fd_pair
+{
+    int sock_fd;
+    struct tcp_info tcpinfo;
+}; 
+
 
 struct tpcinfo_field tcpinfo_fields_enabled[] = 
 {
@@ -105,32 +115,7 @@ struct tpcinfo_field tcpinfo_fields_enabled[] =
 #endif
 };
 
-
-
-void print_summary_header()
-{
-    uint32_t i = 0;
-    char *fmt;
-    fprintf(stdout, "%5s", "fd");
-    
-    fmt = (char*) malloc(sizeof(char) * 50);
-    if(fmt == NULL) 
-    {
-        perror("malloc");
-        exit(1);
-    }
-
-    for(; i < sizeof(tcpinfo_fields_enabled)/sizeof(tcpinfo_fields_enabled[0]); i++) 
-    {
-        sprintf(fmt, "%%%zus", strlen(tcpinfo_fields_enabled[i].name) + 5);
-        fprintf(stdout, fmt, tcpinfo_fields_enabled[i].name);
-
-    }
-    fprintf(stdout,"\n");
-    free(fmt);
-}
-
-void print_summary_socket(int sock_fd, struct tcp_info* tcpinfo)
+void print_summary_sockets(list_node_t* list_tcp_info)
 {
     /*
      * One remark before everything else: some of these counters are reset
@@ -151,22 +136,38 @@ void print_summary_socket(int sock_fd, struct tcp_info* tcpinfo)
      * fackets:  What the hell is this? 
      *
      */
-    uint32_t i = 0;
-    char *fmt;
+    uint32_t i = 0, j = 0;
+    char fmt[10];
+    struct tcpinfo_fd_pair *p;
 
-    fprintf(stdout, "%5d", sock_fd);
-    fmt = (char*) malloc(sizeof(char) * 50);
-    for(; i < sizeof(tcpinfo_fields_enabled)/sizeof(tcpinfo_fields_enabled[0]); i++)
-    { 
-        sprintf(fmt, "%%%zu%s", 
-                strlen(tcpinfo_fields_enabled[i].name) + 5,
-                tcpinfo_fields_enabled[i].fmt);
-        uint8_t *ptr_field = (uint8_t*)tcpinfo + tcpinfo_fields_enabled[i].offset;
-        fprintf(stdout, fmt, *((uint32_t*)ptr_field));
+    /*
+     * Ouput will like the following:
+     *       fd   a   b   c   d   e   
+     *    state   1   2   3   4   5
+     * ca_state   6   7   8   9   10
+     */
+
+    fprintf(stdout, "%15s", "fd");
+    for(i = 0; i < list_len(list_tcp_info); ++i)
+    {
+        p = (struct tcpinfo_fd_pair*)list_get(list_tcp_info, i);
+        fprintf(stdout, "%15d", p->sock_fd);
     }
     fprintf(stdout, "\n");
-    free(fmt);
-
+    
+    for(i = 0; i < sizeof(tcpinfo_fields_enabled)/sizeof(tcpinfo_fields_enabled[0]); i++)
+    { 
+        fprintf(stdout, "%15s", tcpinfo_fields_enabled[i].name);
+        for(j = 0; j < list_len(list_tcp_info); ++j)
+        {
+            struct tcpinfo_fd_pair *p = list_get(list_tcp_info, j);
+            sprintf(fmt, "%%15%s", tcpinfo_fields_enabled[i].fmt);
+            uint8_t *ptr_field = (uint8_t*) (&(p->tcpinfo)) + tcpinfo_fields_enabled[i].offset;
+            fprintf(stdout, fmt, *((uint32_t*)ptr_field));
+        }
+        fprintf(stdout, "\n");
+     }
+    fprintf(stdout, "\n");
 }
 
 void sigusr_callback(int signum)
@@ -174,33 +175,43 @@ void sigusr_callback(int signum)
 
     struct tcp_info tcp_info;
     int sock_fd;
-    uint32_t index = 0;
-    
-    socklen_t tcp_info_len = sizeof(struct tcp_info);
-    if(list_len(list_sock) == 0)
-    {
-        fprintf(stderr, "No active sockets\n");
-        return;
-    }
+    uint32_t i = 0;
 
+    /* List of tcp_info structures with respective fds */
+    list_node_t* list_tcp_info = NULL;
+    struct tcpinfo_fd_pair p;
+
+    socklen_t tcp_info_len = sizeof(struct tcp_info);
     size_t num_sockets = list_len(list_sock);
-    for(; index < num_sockets; index++ )
+    
+    for(i = 0; i < num_sockets; ++i )
     {
         sock_fd = *((int*)list_get(list_sock, 0));
         int ret = getsockopt(sock_fd, 
-                             IPPROTO_TCP,
-                             TCP_INFO,
-                             (void *)&tcp_info,
-                             &tcp_info_len);
+                             IPPROTO_TCP, TCP_INFO, 
+                             (void *)&tcp_info, &tcp_info_len);
+        
+        if(ret < 0)
+        {
+            fprintf(stdout, "Error while querying the socket\n");
+            continue;
+        }
+            
+        /* Snapshot of tcp_info structure obtained from the kernel */
+        memcpy(&p.tcpinfo, &tcp_info, sizeof(struct tcp_info));
+        p.sock_fd = sock_fd;
 
-        print_summary_header();
+        /* Adding the new pair fd,tcp_info to the list */
+        if(list_tcp_info == NULL)
+            list_tcp_info = list_init(&p, sizeof(struct tcpinfo_fd_pair));
+        else
+            list_tcp_info = list_insert(list_tcp_info, &p, 
+                                        sizeof(struct tcpinfo_fd_pair), 
+                                        list_len(list_tcp_info)); 
 
-        if(ret == 0) 
-            print_summary_socket(sock_fd, &tcp_info);
-        else 
-            fprintf(stderr, "Error querying TCP_INFO\n");
     }
-
+    print_summary_sockets(list_tcp_info);
+    list_destroy(list_tcp_info);
 }
 
 int poll(struct pollfd *fds, nfds_t nfds, int timeout)
