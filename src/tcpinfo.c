@@ -140,13 +140,6 @@ void print_summary_sockets(list_node_t* list_tcp_info)
     char fmt[10];
     struct tcpinfo_fd_pair *p;
 
-    /*
-     * Ouput will like the following:
-     *       fd   a   b   c   d   e   
-     *    state   1   2   3   4   5
-     * ca_state   6   7   8   9   10
-     */
-
     fprintf(stdout, "%15s", "fd");
     for(i = 0; i < list_len(list_tcp_info); ++i)
     {
@@ -187,15 +180,11 @@ void sigusr_callback(int signum)
     for(i = 0; i < num_sockets; ++i )
     {
         sock_fd = *((int*)list_get(list_sock, 0));
-        int ret = getsockopt(sock_fd, 
-                             IPPROTO_TCP, TCP_INFO, 
-                             (void *)&tcp_info, &tcp_info_len);
+        int ret = getsockopt(sock_fd, IPPROTO_TCP, TCP_INFO, 
+                            (void *)&tcp_info, &tcp_info_len);
         
         if(ret < 0)
-        {
-            fprintf(stdout, "Error while querying the socket\n");
             continue;
-        }
             
         /* Snapshot of tcp_info structure obtained from the kernel */
         memcpy(&p.tcpinfo, &tcp_info, sizeof(struct tcp_info));
@@ -216,13 +205,17 @@ void sigusr_callback(int signum)
 
 int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 {
-    /* poll hack to make it restart upon returning with EINTR. If poll
-     * is interrupted twice, the second interruption will not be trapped */
+    /* Hook for poll which restarts the system call upon receiving a signal.
+     * poll normally returns always EINTR when interrupted even if SA_RESTART
+     * is set. The following code will restart poll until the return value is != -1
+     * (even though it's very unlikely that poll is interrupted twice during
+     * the same invocation) */
+    
     int (*poll_libc)(struct pollfd*, nfds_t, int);
     poll_libc = (int(*)(struct pollfd *, nfds_t, int))dlsym(RTLD_NEXT, "poll");
     
     int ret = (*poll_libc)(fds, nfds, timeout);
-    if(ret == -1 && errno == EINTR)
+    while(ret == -1 && errno == EINTR) 
         ret = (*poll_libc)(fds, nfds, timeout);
 
     return ret;
@@ -233,7 +226,7 @@ int socket(int domain, int type, int protocol)
     struct sigaction sigusr_action;
     sigusr_action.sa_handler = &sigusr_callback;
     /* 
-     * Setting handler for SIGUSR1, specifying SA_RESTART to restart syscalls.
+     * Setting a handler for SIGUSR1, specifying SA_RESTART to restart syscalls.
      * In some cases, this is not enough. For instance, poll is never restarted 
      * if interrupted, regardless of SA_RESTART. If the any of the two ends of the
      * communication is polling, upon receiving SIGUSR it will will return
