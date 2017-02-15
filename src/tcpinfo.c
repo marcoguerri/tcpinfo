@@ -319,11 +319,21 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 int close(int fd)
 {
     int (*close_libc)(int);
+    struct stat statbuf;
+
     close_libc = (int(*)(int))dlsym(RTLD_NEXT, "close");
     int ret = (*close_libc)(fd);
     if(list_sock != NULL)
-        list_sock = list_del(list_sock, &fd, sizeof(int));
-
+    {
+        /* fd might not be a socket. If it's indeed a socket, it might  have been
+         * ignored because != SOCK_STREAM and AF_INET */
+        fstat(fd, &statbuf);
+        if(S_ISSOCK(statbuf.st_mode)) 
+        {
+            debug("Deleting socket %d\n", fd);
+            list_sock = list_del(list_sock, &fd, sizeof(int));
+        }
+    }
     return ret;
 }
 
