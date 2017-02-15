@@ -1,0 +1,3 @@
+[submodule "lib/libads"]
+	path = lib/libads
+	url = https://github.com/marcoguerri/libads.git
