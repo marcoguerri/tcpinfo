@@ -4,10 +4,10 @@ OBJECTS := $(SOURCES:.cpp=.o)
 # External libraries, lib and include files
 LIBS := ../lib/libads
 
-CFLAGS = -Wall -O0 -fPIC -D_GNU_SOURCE 
+CFLAGS = -Wall -O0 -fPIC -D_GNU_SOURCE  -DDEBUG
 CFLAGS += $(foreach includedir,$(LIBS),-I$(includedir)/include)
 
-LDLIBS = -ldl -lads
+LDLIBS = -ldl -l:libads.a
 LDFLAGS = -shared $(foreach libdir,$(LIBS),-L$(libdir)/lib)
 
 all: socket.so
@@ -15,7 +15,7 @@ all: socket.so
 socket.so: $(OBJECTS)
 	autoconf
 	./configure
-	make -C ../lib/libads
+	make -C ../lib/libads libads.a
 	$(CC) $(OBJECTS) -o ../lib/$@ $(LDLIBS) $(LDFLAGS) $(CFLAGS)
 
 %.o: %.cpp
