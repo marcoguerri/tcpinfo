@@ -1,6 +1,7 @@
 ### tcpinfo  ###
 tcpinfo is an LD_PRELOAD library which allows to print TCP socket statistics 
-exported by the Linux kernel via tcp_info structure.
+exported by the Linux kernel via tcp_info structure. tcpinfo is not thread 
+safe.
 
 ### License ###
 `tcpinfo` is licensed under the MIT License (MIT).

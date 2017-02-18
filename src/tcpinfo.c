@@ -39,13 +39,13 @@
 
 #ifdef DEBUG
 #define debug(fmt, ...) \
-        fprintf(stderr, fmt, ##__VA_ARGS__)
+        fprintf(stderr, "%s: " fmt, __func__, ##__VA_ARGS__)
 #else
 #define debug(fmt, ...) {}
 #endif
 
 
-list_node_t* list_sock = NULL;
+ads_list_node_t* list_sock = NULL;
 
 #define STRLEN(s) (sizeof(s)/sizeof(s[0]))
 #define ENABLE_FIELD(f, fmt) {#f, fmt, offsetof(struct tcp_info, tcpi_##f)}
@@ -124,7 +124,7 @@ struct tpcinfo_field tcpinfo_fields_enabled[] =
 #endif
 };
 
-void print_summary_sockets(list_node_t* list_tcp_info)
+void print_summary_sockets(ads_list_node_t* list_tcp_info)
 {
     /*
      * One remark before everything else: some of these counters are reset
@@ -133,41 +133,34 @@ void print_summary_sockets(list_node_t* list_tcp_info)
      * and keep track of a cumulative counter. Of course this would not account
      * for all the real events either, but would give an idea of the number of
      * events integrated over time.
-     *
-     * Follows an attempt to explain the meaning of each field.
-     * advmss:   The MSS ("Maximal Segment Size") supported by the connection.
-     *           Linux uses a default value calculated from the first hop device MTU.
-     * ato:      ACK timeout, timeout period for sending a delayed ack, relevant
-     *           when delaying ACKs in order to group them together. Controller by
-     *           /proc/sys/net/ipv4/tcp_ato_min
-     * backoff:  TCP exponential backoff strategy?
-     * ca_state: Current state of the FSA which controls the TCP congestion algorithm
      */
     uint32_t i = 0, j = 0;
+    uint8_t num_fields;
     char fmt[10];
     struct tcpinfo_fd_pair *p;
 
-    fprintf(stdout, "%15s", "fd");
-    for(i = 0; i < list_len(list_tcp_info); ++i)
+    fprintf(stderr, "%15s", "fd");
+    for(i = 0; i < ads_list_len(list_tcp_info); ++i)
     {
-        p = (struct tcpinfo_fd_pair*)list_get(list_tcp_info, i);
-        fprintf(stdout, "%15d", p->sock_fd);
+        p = (struct tcpinfo_fd_pair*)ads_list_get(list_tcp_info, i);
+        fprintf(stderr, "%15d", p->sock_fd);
     }
-    fprintf(stdout, "\n");
+    fprintf(stderr, "\n");
+    num_fields = sizeof(tcpinfo_fields_enabled)/sizeof(tcpinfo_fields_enabled[0]);
 
-    for(i = 0; i < sizeof(tcpinfo_fields_enabled)/sizeof(tcpinfo_fields_enabled[0]); i++)
+    for(i = 0; i < num_fields; i++)
     {
-        fprintf(stdout, "%15s", tcpinfo_fields_enabled[i].name);
-        for(j = 0; j < list_len(list_tcp_info); ++j)
+        fprintf(stderr, "%15s", tcpinfo_fields_enabled[i].name);
+        for(j = 0; j < ads_list_len(list_tcp_info); ++j)
         {
-            struct tcpinfo_fd_pair *p = list_get(list_tcp_info, j);
+            struct tcpinfo_fd_pair *p = ads_list_get(list_tcp_info, j);
             sprintf(fmt, "%%15%s", tcpinfo_fields_enabled[i].fmt);
-            uint8_t *ptr_field = (uint8_t*) (&(p->tcpinfo)) + tcpinfo_fields_enabled[i].offset;
-            fprintf(stdout, fmt, *((uint32_t*)ptr_field));
+            uint8_t *ptr_field = (uint8_t*)&(p->tcpinfo) + tcpinfo_fields_enabled[i].offset;
+            fprintf(stderr, fmt, *((uint32_t*)ptr_field));
         }
-        fprintf(stdout, "\n");
+        fprintf(stderr, "\n");
      }
-    fprintf(stdout, "\n");
+    fprintf(stderr, "\n");
 }
 
 void sigusr_callback(int signum)
@@ -177,37 +170,62 @@ void sigusr_callback(int signum)
     int sock_fd;
     uint32_t i = 0;
 
-    /* List of tcp_info structures with respective fds */
-    list_node_t* list_tcp_info = NULL;
+    /* List of tcp_info structures with corresponding fds */
+    ads_list_node_t* list_tcp_info = NULL;
     struct tcpinfo_fd_pair p;
 
     socklen_t tcp_info_len = sizeof(struct tcp_info);
-    size_t num_sockets = list_len(list_sock);
+    size_t num_sockets = ads_list_len(list_sock);
 
+    debug("number of fds in list: %lu\n",ads_list_len(list_sock));
     for(i = 0; i < num_sockets; ++i )
     {
-        sock_fd = *((int*)list_get(list_sock, 0));
+        sock_fd = *((int*)ads_list_get(list_sock, i));
         int ret = getsockopt(sock_fd, IPPROTO_TCP, TCP_INFO,
                             (void *)&tcp_info, &tcp_info_len);
 
         if(ret < 0)
+        {
+            debug("could not get TCP_INFO for socket %d\n", sock_fd);
             continue;
+        }
 
         /* Snapshot of tcp_info structure obtained from the kernel */
         memcpy(&p.tcpinfo, &tcp_info, sizeof(struct tcp_info));
         p.sock_fd = sock_fd;
 
-        /* Adding the new pair fd,tcp_info to the list */
-        if(list_tcp_info == NULL)
-            list_tcp_info = list_init(&p, sizeof(struct tcpinfo_fd_pair));
-        else
-            list_tcp_info = list_insert(list_tcp_info, &p,
+        /* Adding the new pair <fd,tcp_info> to the list */
+        list_tcp_info = ads_list_insert(list_tcp_info, &p,
                                         sizeof(struct tcpinfo_fd_pair),
-                                        list_len(list_tcp_info));
+                                        ads_list_len(list_tcp_info));
 
     }
     print_summary_sockets(list_tcp_info);
-    list_destroy(list_tcp_info);
+    ads_list_destroy(list_tcp_info);
+}
+
+__attribute__((constructor))
+void init_preload()
+{
+
+    /* Install handler for SIGUSR1 */
+    struct sigaction sigusr_action;
+    sigusr_action.sa_handler = &sigusr_callback;
+    /*
+     * Setting a handler for SIGUSR1, specifying SA_RESTART to restart syscalls.
+     * In some cases, this is not enough. For instance, poll is never restarted
+     * if interrupted, regardless of SA_RESTART. If the any of the two ends of the
+     * communication is polling, upon receiving SIGUSR it will return
+     * with EINTR and it will most likely exit. A hook for poll is set to restart
+     * the call when EINTR is returned.
+     */
+    sigusr_action.sa_flags = SA_RESTART;
+    
+    int (*sigaction_libc)(int, const struct sigaction*, struct sigaction*);
+    sigaction_libc = (int(*)(int, const struct sigaction*, struct sigaction*))dlsym(RTLD_NEXT, "sigaction");
+ 
+    if((*sigaction_libc)(SIGUSR1, &sigusr_action, NULL) < 0)
+        debug("could not install SIGUSR1 signal\n");
 }
 
 int poll(struct pollfd *fds, nfds_t nfds, int timeout)
@@ -228,62 +246,20 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 
 int socket(int domain, int type, int protocol)
 {
-    struct sigaction sigusr_action;
-    sigusr_action.sa_handler = &sigusr_callback;
-    /*
-     * Setting a handler for SIGUSR1, specifying SA_RESTART to restart syscalls.
-     * In some cases, this is not enough. For instance, poll is never restarted
-     * if interrupted, regardless of SA_RESTART. If the any of the two ends of the
-     * communication is polling, upon receiving SIGUSR it will return
-     * with EINTR and it will most likely exit. A hook for poll is set to restart
-     * the call when EINTR is returned.
-     */
-    sigusr_action.sa_flags = SA_RESTART;
-
-    struct sigaction old_action;
-    int ret = sigaction(SIGUSR1, NULL, &old_action);
-    if(ret < 0)
-    {
-        /* Cannot verify if the signal is installed. Forcing installation */
-        if(sigaction(SIGUSR1, &sigusr_action, NULL) < 0)
-            debug("Could not install SIGUSR1 signal\n");
-    }
-    else
-    {
-        if(old_action.sa_handler != &sigusr_callback)
-        {
-            /* Signal handler has not been installed yet */
-            if(sigaction(SIGUSR1, &sigusr_action, NULL) < 0)
-            {
-                debug("Could not install SIGUSR1 signal\n");
-            }
-            else
-            {
-                debug("Signal handler installed correctly\n");
-                pid_t pid = getpid();
-                debug( "Signal PID %d to obtain tcp socket info\n", pid);
-            }
-
-        }
-    }
-
+    
     int (*socket_libc)(int, int, int);
     socket_libc = (int(*)(int, int, int))dlsym(RTLD_NEXT, "socket");
     int fd = (*socket_libc)(domain, type, protocol);
 
     /* Consider only AF_INET and SOCK_STREAM sockets */
-    if( (domain != AF_INET && domain != AF_INET6) ||  type != SOCK_STREAM)
+    if( (domain != AF_INET && domain != AF_INET6) ||  type != SOCK_STREAM || fd < 0)
     {
-        debug("Ignoring socker %d\n", fd);
+        debug("ignoring file descriptor %d\n", fd);
         return fd;
     }
-
-    debug("Adding socket %d\n", fd);
-    if(list_sock == NULL)
-        list_sock = list_init(&fd, sizeof(int));
-    else
-        list_sock = list_insert(list_sock, &fd, sizeof(int), list_len(list_sock));
-
+    pid_t pid = getpid();
+    debug("adding file descriptor %d, pid: %d\n", fd, pid);
+    list_sock = ads_list_insert(list_sock, &fd, sizeof(int), ads_list_len(list_sock));
     return fd;
 }
 
@@ -300,18 +276,18 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
      * on a socket which has not been initialized or on a socket != AF_INET | AF_INET6
      * and SOCK_STREAM. Do nothing in this case */
 
-    if(list_sock != NULL)
+    if(list_sock != NULL && fd > 0)
     {
-        if(list_search(list_sock, &sockfd, sizeof(int)) == NULL)
+        if(ads_list_search(list_sock, &sockfd, sizeof(int)) == NULL)
         {
             /* Welcoming socket must be already in the list. If not, warn but
              * add the new socket anyway */
-            debug( "Welcoming socket is not in the list?\n");
+            debug("welcoming socket is not in the list?\n");
         }
-        debug("Adding socket %d\n", fd);
-        list_sock = list_insert(list_sock, &fd, sizeof(int), list_len(list_sock));
+        pid_t pid = getpid();
+        debug("adding file descriptor %d, pid: %d\n", fd, pid);
+        list_sock = ads_list_insert(list_sock, &fd, sizeof(int), ads_list_len(list_sock));
     }
-
     return fd;
 }
 
@@ -330,10 +306,28 @@ int close(int fd)
         fstat(fd, &statbuf);
         if(S_ISSOCK(statbuf.st_mode)) 
         {
-            debug("Deleting socket %d\n", fd);
-            list_sock = list_del(list_sock, &fd, sizeof(int));
+            debug("deleting file descriptor %d\n", fd);
+            list_sock = ads_list_del(list_sock, &fd, sizeof(int));
         }
     }
     return ret;
 }
 
+/* If process tries to SIG_IGN or SIG_DFL SIGUSR1, then ignore */
+int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
+{
+
+    int ret;
+    int (*sigaction_libc)(int, const struct sigaction*, struct sigaction*);
+    sigaction_libc = (int(*)(int, const struct sigaction*, struct sigaction*))dlsym(RTLD_NEXT, "sigaction");
+    
+    if(signum == SIGUSR1 && act != NULL &&
+       (act->sa_handler == SIG_IGN || act->sa_handler == SIG_DFL))
+    {
+        debug("ignoring request to set SIGUSR1 to SIG_IGN or SIG_DFL\n");
+        return 0;
+    }
+    
+    ret = (*sigaction_libc)(signum, act, oldact);
+    return ret;
+}
