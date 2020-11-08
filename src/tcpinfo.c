@@ -35,7 +35,7 @@
 #include <unistd.h>
 #include <stddef.h>
 #include <stdint.h>
-#include "libads/list.h"
+#include "libll/ll.h"
 #include "config.h"
 
 #ifdef DEBUG
@@ -45,7 +45,7 @@
 #define debug(fmt, ...) {}
 #endif
 
-ads_list_t* list_sock = NULL;
+ll_t* list_sock = NULL;
 
 #define STRLEN(s) (sizeof(s)/sizeof(s[0]))
 #define ENABLE_FIELD(f, fmt) {#f, fmt, offsetof(struct tcp_info, tcpi_##f)}
@@ -124,7 +124,7 @@ struct tpcinfo_field tcpinfo_fields_enabled[] =
 #endif
 };
 
-void print_summary_sockets(ads_list_t* list_tcp_info)
+void print_summary_sockets(ll_t* list_tcp_info)
 {
     /*
      * One remark before everything else: some of these counters are reset
@@ -134,7 +134,7 @@ void print_summary_sockets(ads_list_t* list_tcp_info)
      * for all the real events either, but would give an idea of the number of
      * events integrated over time.
      */
-    if(ads_list_len(list_tcp_info) == 0) {
+    if(ll_len(list_tcp_info) == 0) {
         return;
     }
     uint32_t i = 0, j = 0;
@@ -143,9 +143,9 @@ void print_summary_sockets(ads_list_t* list_tcp_info)
     struct tcpinfo_fd_pair *p;
 
     fprintf(stderr, "%15s", "fd");
-    for(i = 0; i < ads_list_len(list_tcp_info); ++i)
+    for(i = 0; i < ll_len(list_tcp_info); ++i)
     {
-        p = (struct tcpinfo_fd_pair*)(ads_list_node_get(list_tcp_info, i)->data->payload);
+        p = (struct tcpinfo_fd_pair*)(ll_node_get(list_tcp_info, i)->data->payload);
         fprintf(stderr, "%15d", p->sock_fd);
     }
     fprintf(stderr, "\n");
@@ -154,9 +154,9 @@ void print_summary_sockets(ads_list_t* list_tcp_info)
     for(i = 0; i < num_fields; i++)
     {
         fprintf(stderr, "%15s", tcpinfo_fields_enabled[i].name);
-        for(j = 0; j < ads_list_len(list_tcp_info); ++j)
+        for(j = 0; j < ll_len(list_tcp_info); ++j)
         {
-            struct tcpinfo_fd_pair *p = ads_list_node_get(list_tcp_info, j)->data->payload;
+            struct tcpinfo_fd_pair *p = ll_node_get(list_tcp_info, j)->data->payload;
             sprintf(fmt, "%%15%s", tcpinfo_fields_enabled[i].fmt);
             uint8_t *ptr_field = (uint8_t*)&(p->tcpinfo) + tcpinfo_fields_enabled[i].offset;
             fprintf(stderr, fmt, *((uint32_t*)ptr_field));
@@ -174,14 +174,14 @@ void sigusr_callback(int signum)
     uint32_t i = 0;
 
     /* List of tcp_info structures with corresponding fds */
-    ads_list_t* list_tcp_info = NULL;
+    ll_t* list_tcp_info = NULL;
     struct tcpinfo_fd_pair p;
 
     socklen_t tcp_info_len = sizeof(struct tcp_info);
-    size_t num_sockets = ads_list_len(list_sock);
+    size_t num_sockets = ll_len(list_sock);
 
     if(num_sockets > 0) {
-        sock_fd = *((int*)ads_list_node_get(list_sock, i)->data->payload);
+        sock_fd = *((int*)ll_node_get(list_sock, i)->data->payload);
         int ret = getsockopt(sock_fd, IPPROTO_TCP, TCP_INFO,
                             (void *)&tcp_info, &tcp_info_len);
 
@@ -195,14 +195,14 @@ void sigusr_callback(int signum)
             /* Snapshot of tcp_info structure obtained from the kernel */
             memcpy(&p.tcpinfo, &tcp_info, sizeof(struct tcp_info));
             p.sock_fd = sock_fd;
-            list_tcp_info = ads_list_init(&p, sizeof(struct tcpinfo_fd_pair));
+            list_tcp_info = ll_init(&p, sizeof(struct tcpinfo_fd_pair));
         }
     }
 
-    debug("number of fds in list: %lu\n",ads_list_len(list_sock));
+    debug("number of fds in list: %lu\n",ll_len(list_sock));
     for(i = 1; i < num_sockets; ++i )
     {
-        sock_fd = *((int*)ads_list_node_get(list_sock, i)->data->payload);
+        sock_fd = *((int*)ll_node_get(list_sock, i)->data->payload);
         int ret = getsockopt(sock_fd, IPPROTO_TCP, TCP_INFO,
                             (void *)&tcp_info, &tcp_info_len);
 
@@ -217,12 +217,12 @@ void sigusr_callback(int signum)
         memcpy(&p.tcpinfo, &tcp_info, sizeof(struct tcp_info));
         p.sock_fd = sock_fd;
         /* Adding the new pair <fd,tcp_info> to the list */
-        list_tcp_info = ads_list_insert(list_tcp_info, &p,
-                                        ads_list_len(list_tcp_info));
+        list_tcp_info = ll_insert(list_tcp_info, &p,
+                                        ll_len(list_tcp_info));
 
     }
     print_summary_sockets(list_tcp_info);
-    ads_list_destroy(list_tcp_info);
+    ll_destroy(list_tcp_info);
 }
 
 __attribute__((constructor))
@@ -299,11 +299,11 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
     if(fd > 0)
     {
         if(!list_sock) {
-            list_sock = ads_list_init(&fd, sizeof(int));
+            list_sock = ll_init(&fd, sizeof(int));
         } else {
             pid_t pid = getpid();
             debug("adding file descriptor %d, pid: %d\n", fd, pid);
-            ads_list_insert(list_sock, &fd, ads_list_len(list_sock));
+            ll_insert(list_sock, &fd, ll_len(list_sock));
        }
     }
     return fd;
@@ -325,7 +325,7 @@ int close(int fd)
         if(S_ISSOCK(statbuf.st_mode)) 
         {
             debug("deleting file descriptor %d\n", fd);
-            ads_list_del(list_sock, &fd);
+            ll_del(list_sock, &fd);
         }
     }
     return ret;
